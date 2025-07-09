@@ -18,6 +18,12 @@
       color: #fff;
     }
 
+    .status-box {
+      margin-bottom: 1rem;
+      font-weight: bold;
+      color: #00ffcc;
+    }
+
     #log {
       max-height: 80vh;
       overflow-y: auto;
@@ -27,10 +33,15 @@
       border-radius: 8px;
     }
 
-    .chat, .gift {
+    .log-entry {
       margin-bottom: 0.75rem;
       padding: 0.5rem;
       border-left: 3px solid #444;
+    }
+
+    .placeholder {
+      color: #777;
+      font-style: italic;
     }
 
     .chat span,
@@ -46,25 +57,56 @@
 </head>
 <body>
   <h1>🎥 TikTok Live Dashboard</h1>
-  <div id="log"></div>
+  <div id="status" class="status-box">🔌 Waiting for TikTok livestream to begin...</div>
+  <div id="log">
+    <div class="placeholder">No activity yet — waiting for livestream events...</div>
+  </div>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script>
-    const log = document.getElementById('log');
-    const ws = new WebSocket(`ws://${location.host}`);
+    const statusBox = document.getElementById("status");
+    const logBox = document.getElementById("log");
+    const socket = io();
 
-    ws.onmessage = (msg) => {
-      const data = JSON.parse(msg.data);
-      const entry = document.createElement('div');
-      entry.className = data.type;
+    function appendToLog(html) {
+      const entry = document.createElement("div");
+      entry.className = "log-entry";
+      entry.innerHTML = html;
+      logBox.appendChild(entry);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
 
-      if (data.type === 'chat') {
-        entry.innerHTML = `<span>${data.user}</span>: ${data.message}`;
-      } else if (data.type === 'gift') {
-        entry.innerHTML = `<span>${data.user}</span> sent <b>${data.gift}</b> x${data.amount}`;
-      }
+    socket.on("connect", () => {
+      statusBox.textContent = "✅ Connected to TikTok Live.";
+    });
 
-      log.prepend(entry);
-    };
+    socket.on("disconnect", () => {
+      statusBox.textContent = "❌ Disconnected or livestream ended.";
+    });
+
+    socket.on("connection-error", (msg) => {
+      statusBox.textContent = `⚠️ ${msg}`;
+    });
+
+    socket.on("chat", (data) => {
+      appendToLog(`💬 <span>${data.uniqueId}</span>: ${data.comment}`);
+    });
+
+    socket.on("gift", (data) => {
+      appendToLog(`🎁 <span>${data.uniqueId}</span> sent <b>${data.giftName}</b> x${data.repeatCount}`);
+    });
+
+    socket.on("like", (data) => {
+      appendToLog(`❤️ <span>${data.uniqueId}</span> liked the stream (${data.totalLikeCount} total likes)`);
+    });
+
+    socket.on("follow", (data) => {
+      appendToLog(`🙌 <span>${data.uniqueId}</span> followed!`);
+    });
+
+    socket.on("subscribe", (data) => {
+      appendToLog(`⭐ <span>${data.uniqueId}</span> subscribed!`);
+    });
   </script>
 </body>
 </html>
