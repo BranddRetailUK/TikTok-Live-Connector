@@ -1,7 +1,7 @@
 {
-  "name": "tiktok-live-runtime",
+  "name": "tiktok-live-dashboard",
   "version": "1.0.0",
-  "description": "A runtime app using TikTok-Live-Connector to log chat and gifts in realtime.",
+  "description": "TikTok Live stream dashboard with chat and gift event display",
   "main": "app.js",
   "type": "module",
   "scripts": {
@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "dotenv": "^16.5.0",
-    "tiktok-live-connector": "^2.0.7-alpha1"
+    "express": "^4.18.2",
+    "tiktok-live-connector": "^2.0.7-alpha1",
+    "ws": "^8.13.0"
   },
   "engines": {
     "node": ">=16.0.0"
@@ -17,11 +19,11 @@
   "keywords": [
     "tiktok",
     "live",
-    "connector",
-    "chat",
-    "gifts",
+    "dashboard",
     "websocket",
-    "streaming"
+    "stream",
+    "gift",
+    "chat"
   ],
   "author": "you",
   "license": "MIT"

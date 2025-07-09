@@ -1,48 +1,67 @@
-// app.js
 import 'dotenv/config.js';
+import express from 'express';
+import { WebSocketServer } from 'ws';
 import { TikTokLiveConnection, WebcastEvent, ControlEvent, SignConfig } from 'tiktok-live-connector';
 
-// 🧠 Validate required env vars
+const app = express();
+const port = process.env.PORT || 8080;
+app.use(express.static('public'));
+
+const server = app.listen(port, () => {
+  console.log(`✅ Dashboard running at http://localhost:${port}`);
+});
+
+const wss = new WebSocketServer({ server });
+let sockets = [];
+
+wss.on('connection', ws => {
+  sockets.push(ws);
+  ws.on('close', () => {
+    sockets = sockets.filter(s => s !== ws);
+  });
+});
+
+function broadcast(data) {
+  const msg = JSON.stringify(data);
+  sockets.forEach(ws => {
+    if (ws.readyState === ws.OPEN) ws.send(msg);
+  });
+}
+
 if (!process.env.TIKTOK_USERNAME) {
-  console.error('❌ TIKTOK_USERNAME is not set in .env');
+  console.error('❌ TIKTOK_USERNAME is missing in .env');
   process.exit(1);
 }
 
-// 🔐 Optional: use EulerStream sign server
 if (process.env.SIGN_API_KEY) {
   SignConfig.apiKey = process.env.SIGN_API_KEY;
 }
 
-// 🎯 Create connection instance
 const connection = new TikTokLiveConnection(process.env.TIKTOK_USERNAME, {
   enableExtendedGiftInfo: true,
   sessionId: process.env.SESSION_ID || undefined,
   ttTargetIdc: process.env.TT_TARGET_IDC || undefined,
 });
 
-// 🚀 Connect to the TikTok LIVE stream
 connection.connect().then(state => {
-  console.log(`✅ Connected to ${process.env.TIKTOK_USERNAME} (roomId: ${state.roomId})`);
+  console.log(`🎥 Connected to ${process.env.TIKTOK_USERNAME} (roomId: ${state.roomId})`);
 }).catch(err => {
-  console.error('❌ Failed to connect:', err.message || err);
+  console.error('❌ Connection failed:', err.message || err);
 });
 
-// 💬 Chat handler
 connection.on(WebcastEvent.CHAT, data => {
-  console.log(`[CHAT] ${data.user.uniqueId}: ${data.comment}`);
+  broadcast({ type: 'chat', user: data.user.uniqueId, message: data.comment });
 });
 
-// 🎁 Gift handler
 connection.on(WebcastEvent.GIFT, data => {
-  if (data.giftType === 1 && !data.repeatEnd) return; // skip in-progress streaks
-  console.log(`[GIFT] ${data.user.uniqueId} sent ${data.giftName} x${data.repeatCount}`);
+  if (data.giftType === 1 && !data.repeatEnd) return;
+  broadcast({ type: 'gift', user: data.user.uniqueId, gift: data.giftName, amount: data.repeatCount });
 });
 
-// ⚠️ Control event handlers
 connection.on(ControlEvent.DISCONNECTED, () => {
-  console.warn('⚠️ Disconnected from TikTok LIVE');
+  console.warn('⚠️ Disconnected from LIVE');
 });
 
 connection.on(ControlEvent.ERROR, err => {
-  console.error('❌ Runtime error:', err.message || err);
+  console.error('❌ Error:', err.message || err);
 });
