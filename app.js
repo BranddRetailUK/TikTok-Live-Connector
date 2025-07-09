@@ -1,84 +1,73 @@
-import express from 'express';
-import { Server } from 'socket.io';
-import http from 'http';
-import dotenv from 'dotenv';
-import { TikTokLiveConnection } from 'tiktok-live-connector';
-
-dotenv.config();
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import { TikTokLiveConnection } from "tiktok-live-connector";
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: '*' }
-});
+const io = new Server(server);
 
-app.use(express.static('public'));
+const port = process.env.PORT || 3000;
 
-const port = process.env.PORT || 8080;
+app.use(express.static("public"));
 
-let tiktokConnection = null;
+io.on("connection", (socket) => {
+  console.log("🟢 Client connected");
 
-const connectToTikTok = (username, socket) => {
-  if (tiktokConnection) {
-    tiktokConnection.disconnect();
-  }
+  socket.on("setUsername", (username) => {
+    console.log(`🔗 Connecting to stream: ${username}`);
 
-  tiktokConnection = new TikTokLiveConnection(username, {
-    enableExtendedGiftInfo: true
-  });
+    const tiktokConnection = new TikTokLiveConnection(username, {
+      enableExtendedGiftInfo: true,
+    });
 
-  tiktokConnection.connect().catch((err) => {
-    console.error('❌ Connection failed:', err.message);
-    socket.emit('status', `❌ Connection failed: ${err.message}`);
-  });
+    tiktokConnection.connect().catch((err) => {
+      console.error("❌ Connection failed:", err.message);
+      socket.emit("status", `❌ Connection failed: ${err.message}`);
+    });
 
-  tiktokConnection.on('chat', (data) => {
-    socket.emit('chat', {
-      nickname: data?.nickname || 'Unknown',
-      comment: data?.comment || '(no comment)'
+    tiktokConnection.on("connected", () => {
+      console.log("✅ Connected to TikTok Live stream");
+      socket.emit("status", "✅ Connected to TikTok Live stream");
+    });
+
+    tiktokConnection.on("chat", (data) => {
+      const user = data.uniqueId || data.nickname || data.userId || "Guest";
+      const comment = data.comment || "";
+      socket.emit("chat", { user, comment });
+    });
+
+    tiktokConnection.on("gift", (data) => {
+      const user = data.uniqueId || data.nickname || data.userId || "Guest";
+      const gift = data.giftName || (data.gift && data.gift.name) || "Gift";
+      const amount = data.repeatCount || 1;
+      socket.emit("gift", { user, gift, amount });
+    });
+
+    tiktokConnection.on("like", (data) => {
+      const user = data.uniqueId || data.nickname || data.userId || "Guest";
+      const total = data.totalLikeCount || 0;
+      socket.emit("like", { user, total });
+    });
+
+    tiktokConnection.on("follow", (data) => {
+      const user = data.uniqueId || data.nickname || data.userId || "Guest";
+      socket.emit("follow", { user });
+    });
+
+    tiktokConnection.on("subscribe", (data) => {
+      const user = data.uniqueId || data.nickname || data.userId || "Guest";
+      socket.emit("subscribe", { user });
+    });
+
+    tiktokConnection.on("disconnected", () => {
+      console.log("🔌 Disconnected from TikTok Live stream");
+      socket.emit("status", "🔌 Disconnected from TikTok Live stream");
     });
   });
 
-  tiktokConnection.on('gift', (data) => {
-    socket.emit('gift', {
-      nickname: data?.nickname || 'Unknown',
-      giftName: data?.giftName || 'Mystery Gift',
-      repeatCount: typeof data?.repeatCount === 'number' ? data.repeatCount : 1
-    });
-  });
-
-  tiktokConnection.on('like', (data) => {
-    socket.emit('like', {
-      nickname: data?.nickname || 'Viewer',
-      likeCount: typeof data?.likeCount === 'number' ? data.likeCount : 1,
-      totalLikeCount: typeof data?.totalLikeCount === 'number' ? data.totalLikeCount : 0
-    });
-  });
-
-  tiktokConnection.on('follow', (data) => {
-    socket.emit('follow', {
-      nickname: data?.nickname || 'New Follower'
-    });
-  });
-
-  tiktokConnection.on('subscribe', (data) => {
-    socket.emit('subscribe', {
-      nickname: data?.nickname || 'Subscriber'
-    });
-  });
-};
-
-io.on('connection', (socket) => {
-  console.log('✅ Frontend connected via WebSocket');
-
-  const defaultUsername = process.env.TIKTOK_USERNAME;
-  if (defaultUsername) {
-    connectToTikTok(defaultUsername, socket);
-  }
-
-  socket.on('setUsername', (username) => {
-    console.log(`🔁 Switching to user: ${username}`);
-    connectToTikTok(username, socket);
+  socket.on("disconnect", () => {
+    console.log("🔴 Client disconnected");
   });
 });
 
