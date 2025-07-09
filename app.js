@@ -9,62 +9,76 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: '*',
-  }
+  cors: { origin: '*' }
 });
 
-// Serve static files from public folder
 app.use(express.static('public'));
 
 const port = process.env.PORT || 8080;
 
-// WebSocket connection to browser
-io.on('connection', (socket) => {
-  console.log('Frontend connected via WebSocket');
+let tiktokConnection = null;
 
-  // Connect to TikTok Live
-  const tiktokUsername = process.env.TIKTOK_USERNAME;
-  const tiktokConnection = new TikTokLiveConnection(tiktokUsername, {
+const connectToTikTok = (username, socket) => {
+  if (tiktokConnection) {
+    tiktokConnection.disconnect();
+  }
+
+  tiktokConnection = new TikTokLiveConnection(username, {
     enableExtendedGiftInfo: true
   });
 
   tiktokConnection.connect().catch((err) => {
     console.error('❌ Connection failed:', err.message);
+    socket.emit('status', `❌ Connection failed: ${err.message}`);
   });
 
-  tiktokConnection.on('chat', data => {
+  tiktokConnection.on('chat', (data) => {
     socket.emit('chat', {
-      user: data.nickname,
-      comment: data.comment
+      nickname: data?.nickname || 'Unknown',
+      comment: data?.comment || '(no comment)'
     });
   });
 
-  tiktokConnection.on('gift', data => {
+  tiktokConnection.on('gift', (data) => {
     socket.emit('gift', {
-      user: data.nickname,
-      gift: data.giftName,
-      amount: data.repeatCount
+      nickname: data?.nickname || 'Unknown',
+      giftName: data?.giftName || 'Mystery Gift',
+      repeatCount: typeof data?.repeatCount === 'number' ? data.repeatCount : 1
     });
   });
 
-  tiktokConnection.on('like', data => {
+  tiktokConnection.on('like', (data) => {
     socket.emit('like', {
-      user: data.nickname,
-      total: data.totalLikeCount
+      nickname: data?.nickname || 'Viewer',
+      likeCount: typeof data?.likeCount === 'number' ? data.likeCount : 1,
+      totalLikeCount: typeof data?.totalLikeCount === 'number' ? data.totalLikeCount : 0
     });
   });
 
-  tiktokConnection.on('follow', data => {
+  tiktokConnection.on('follow', (data) => {
     socket.emit('follow', {
-      user: data.nickname
+      nickname: data?.nickname || 'New Follower'
     });
   });
 
-  tiktokConnection.on('subscribe', data => {
+  tiktokConnection.on('subscribe', (data) => {
     socket.emit('subscribe', {
-      user: data.nickname
+      nickname: data?.nickname || 'Subscriber'
     });
+  });
+};
+
+io.on('connection', (socket) => {
+  console.log('✅ Frontend connected via WebSocket');
+
+  const defaultUsername = process.env.TIKTOK_USERNAME;
+  if (defaultUsername) {
+    connectToTikTok(defaultUsername, socket);
+  }
+
+  socket.on('setUsername', (username) => {
+    console.log(`🔁 Switching to user: ${username}`);
+    connectToTikTok(username, socket);
   });
 });
 
